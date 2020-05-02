@@ -14,4 +14,10 @@ CGM data collected from 25 (out of 45) subjects in a single-centered, randomized
 Parametric (two sample t-test) and non-parametric test (Wilcoxon test) were used to conduct univariate association of drug effect and the indices. To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.
 
 ### IV. Results
-Using linear mixed model, we were able to identify five out of seven glucose variability indices that showed a significant drug effect difference throughout treatment duration using random intercept and slope model. Additionally, we were able to conclude that drug X performed better than drug Y throughout the treatment duration when evaluating the outcome using the identified five indices: glucose SD ($p = 0.001$), glucose CV ($p < 0.001$), LBGI ($p = 0.04$), TIR ($p = 0.02$) and TBR ($p = 0.02$).
+Using linear mixed model, we were able to identify five out of seven glucose variability indices that showed a significant drug effect difference throughout treatment duration using random intercept and slope model. Additionally, we were able to conclude that drug X performed better than drug Y throughout the treatment duration when evaluating the outcome using the identified five indices: glucose SD (p = 0.001), glucose CV (p < 0.001), LBGI (p = 0.04), TIR (p = 0.02) and TBR (p = 0.02).
+
+## Project 2
+
+## Project 3
+
+## Project 4
