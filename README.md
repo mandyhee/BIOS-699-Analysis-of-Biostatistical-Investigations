@@ -11,7 +11,9 @@ In this study, we assessed the following seven glucose variability indices: gluc
 CGM data collected from 25 (out of 45) subjects in a single-centered, randomized, single- blinded, open-label phase IV cross-over clinical trial. Subjects were randomized to two group, with group A started drug X treatment in the first 12 weeks, followed by a 2-week wash out period, then started drug Y treatment for another 12 weeks; treatment for subjects in group B was in reverse order. Glucose variability indices were calculated in daily bases (per day) for each participant. 
 
 ### III. Statistical Analysis
-Parametric (two sample t-test) and non-parametric test (Wilcoxon test) were used to conduct univariate association of drug effect and the indices. To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.
+Parametric (two sample t-test) and non-parametric test (Wilcoxon test) were used to conduct univariate association of drug effect and the indices.  
+
+To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.
 
 
 ## Project 2: The potential impact of menthol on transitions from cigarettes to e-cigarettes: PATH Study
@@ -26,6 +28,20 @@ Data were collected from the PATH (Population Assessment of Tobacco and Health) 
 ### III. Statistical Analysis
 To focus on cigarette to e-cigarette transitions, trajectory analysis and logistic regression were conducted targeting the participants who started as cigarette but non-e-cigarette users at wave 1, developments of their e-cigarette usage through wave 2 to wave 4 were assessed. ROC analysis was also assessed to check logistic regression model performance.
 
-## Project 3
+## Project 3: Investigation of common chronic medication use and tumor sites in head and neck squamous cell carcinoma (HNSCC)
+### I. Project Description
+Head and neck squamous cell carcinoma (HNSCC) are cancer that mostly originate from lip, oral cavity, hypopharynx, oropharynx, nasopharynx or larynx. Prior research has identified several important associations between comorbidities medications with cancer outcome. However, there are lack of studies on how comorbidities drugs effect cancer outcome in rarer cancer such as HNSCC.   
 
+The goal for this study is to determine if common chronic medications (aspirin, metformin, statin, insulin) as well as different tumor sites (larynx, oropharynx, oral cavity) are associated with HNSCC patient’s survival outcomes.
+
+### II. Study Design
+Data were collected on N = 1642 HNSCC patients from the University of Michigan Specialized Program of Research Excellence (SPORE). Eligibility criteria including participants greater than 18 years of age, must be English speaker, no barriers which affect study compliance, incident of cancer must be no HNSCC diagnosed last 5 years and no previous treatment. Information were collected through patient interviews, pretreatment surveys, medical record extractions, annual chart reviews and follow up surveys, survival time and recurrence time were also collected throughout the study. 
+
+### III. Statistical Analysis
+Overall survival and progression-free survival were being assessed using Kaplan-Meier Estimators. Log-rank test was assessed to compare survival curves for covariates of interest that met proportional assumptions, while Wilcoxon test was assessed to compare survival curves that violated proportional assumptions.   
+
+Multivariate Cox Hazard models were built to evaluate the association between comorbidity drugs and tumor sites with HNSCC patient’s survival time. Additionally, Schoenfeld’s global test was assessed to test proportional hazard assumption in the Cox model, if the global proportional hazard assumption was violated (p < 0.05), risk factors that violated the proportional hazard assumption will be stratified in the model instead of including in the model as confounders.
 ## Project 4
+### I. Project Description
+### II. Studt Design
+### III. Statistical Analysis
