@@ -1,0 +1,829 @@
+---
+title: "BIOS699: Project 1 Investigation of Glucose Variability Indices in Type II Diabetes Patients"
+author: "Mandy Ho"
+date: "1/20/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# I. Project Description
+Diabetes has been the seventh leading cause of death in United States over the past five years, therefore, the use of continuous glucose monitoring (CGM) of tracking real-time blood glucose level became an important indices to control diabetes progression.   
+
+In this study we assessed the following seven glucose variability indices: glucose mean, glucose standard deviation (SD), glucose coefficient of variation (CV), time in range (TIR, % of readings in 70-180 mg/dL), time above range (TAR, % of readings > 180 mg/dL), time above range (TBR, % of readings < 70 mg/dL), and additionally, low blood glucose index (LBGI) in evaluating the effectiveness of two types of existed diabetic drugs (drug X, drug Y) in type II diabetes patients.
+
+# II. Study Design
+CGM data collected from 25 (out of 45) subjects in a single-centered, randomized, single- blinded, open-label phase IV cross-over clinical trial. Subjects were randomized to two group, with group A started drug X treatment in the first 12 weeks, followed by a 2-week wash out period, then started drug Y treatment for another 12 weeks; treatment for subjects in group B was in reverse order. Glucose variability indices were calculated in daily bases (per day) for each participant. 
+
+# III. Statistical Analysis
+Parametric (two sample t-test) and non-parametric test (Wilcoxon test) were used to conduct univariate association of drug effect and the indices. To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.
+
+
+# IV. Use of this file
+This file serve as the statistical and graphic analysis for generating final report.
+
+```{r load library, echo = FALSE, warning=FALSE, message=FALSE}
+options(scipen = 999, digits =3)
+library(tidyverse)
+library(lme4)
+library(afex) # add p-value for lme4
+library(nlme)
+library(rstatix)
+library(lubridate)
+library(gridExtra)
+library(knitr)
+library(kableExtra)
+library(ggpubr)
+library(ggrepel) 
+source("theme_apa.R")
+```
+
+```{r load data,  warning=FALSE, message=FALSE}
+# proj1_demo.csv contains baseline parameters such as treatment group, HbA1c, BMI, SBP, DBP...
+demo = read.csv("../proj1_demo.csv", header = T)
+str(demo)
+# proj1_glucose.csv contains CGM data (glucose levels) and time of assessment
+glu = read.csv("../proj1_glucose.csv", header = T)
+str(glu)
+```
+
+
+```{r data cleaning, echo = FALSE, warning=FALSE, message=FALSE}
+# create race categories -----------------------        
+demo["race_cat"] = ifelse(demo$Race == demo$Race[1], 1, 0)
+# create treatment  group categories -----------
+#   group A = 1 (drug x --> drug y)
+#   group B = 0 (drug y --> drug x)
+demo['tm_group'] = ifelse(demo$Treatment.group == "Group A",1,0)
+# creat sex categories --------------------------
+demo['sex_cat'] = ifelse(demo$Sex == "Female (0)", 1, 0)
+# create treatment duration & wash-out period ---
+demo$Date.of.Baseline.for.Drug.1 = mdy(demo$Date.of.Baseline.for.Drug.1)
+demo$Date.of.Baseline.for.Drug.2 = mdy(demo$Date.of.Baseline.for.Drug.2)
+demo['end_of_drug1'] = demo$Date.of.Baseline.for.Drug.1 + weeks(12)
+demo['end_of_drug2'] = demo$Date.of.Baseline.for.Drug.2 + weeks(12)
+demo["wash_duration"] = demo$Date.of.Baseline.for.Drug.2 - demo$end_of_drug1
+demo["wash_midpoint"] = demo$end_of_drug1 + demo$wash_duration/2
+# id 27, 44: missing dates
+```
+
+
+```{r GV, echo = FALSE, warning=FALSE, message=FALSE}
+# create glucose variability indices -------------------
+glu$Date = mdy(glu$Date)
+glu["TIRi"] = ifelse(glu$Historic.Glucose.mg.dL. %in% 70:180,1,0)
+glu["TBRi"] = ifelse(glu$Historic.Glucose.mg.dL.< 70,1,0)
+glu["TARi"] = ifelse(glu$Historic.Glucose.mg.dL.> 180,1,0)
+
+gv = glu %>%
+  mutate(LBGIi = ifelse(log(Historic.Glucose.mg.dL.)**1.084 - 5.381 < 0, 
+                        22.77*((log(Historic.Glucose.mg.dL.)**1.084 - 5.381)**2), 0)
+                        ) %>%
+  group_by(ID, Date) %>%
+  summarise(case = n(),
+            TIRt = sum(TIRi),
+            TARt = sum(TARi),
+            TBRt = sum(TBRi),
+            LBGIt = sum(LBGIi),
+            glucose_mean = mean(Historic.Glucose.mg.dL.),
+            glucose_sd = sd(Historic.Glucose.mg.dL.)) %>%
+  mutate(glucose_CV = glucose_sd/glucose_mean*100,
+         TIR = TIRt/case*100,
+         TAR = TARt/case*100,
+         TBR = TBRt/case*100,
+         LBGI  = format(LBGIt / case, digits =3))
+
+
+# create dummy variables for drug and period --------------------------------
+gv["drug"] = NA
+gv["period"] = NA
+gv["group"] = NA
+for (i in 1:dim(gv)[1]){
+  id = gv$ID[i]
+  date = gv$Date[i]
+  # pos_at_demo = grep(id, demo$id)
+  group = demo[demo$id ==id, "tm_group"]
+  drug1_start = demo[demo$id ==id, "Date.of.Baseline.for.Drug.1"]
+  drug1_end = demo[demo$id ==id, "end_of_drug1"]
+  drug2_start = demo[demo$id ==id, "Date.of.Baseline.for.Drug.2"]
+  drug2_end = demo[demo$id ==id, "end_of_drug2"]
+  # drug x = 1, drug y = 0
+  # group = 1: group A (x-->y)
+  if (group == 1){
+    gv[i, "group"] = 1
+    if (ymd(date) %in% drug1_start:drug1_end){ # drug x
+      gv[i, "drug"] = 1
+      gv[i, "period"] = 0
+    } else if(ymd(date) %in% drug2_start:drug2_end){ # drug y
+      gv[i, "drug"] = 0
+      gv[i, "period"] = 1
+    }
+  } else {# group = 0: group B (y-->x)
+    gv[i, "group"] = 0
+    if (ymd(date) %in% drug1_start:drug1_end){ # drug y
+      gv[i, "drug"] = 0
+      gv[i, "period"] = 0
+    } else if(ymd(date) %in% drug2_start:drug2_end){ # drug x
+      gv[i, "drug"] = 1
+      gv[i, "period"] = 1
+    }
+  }
+}
+
+# merge gv with baseline variables -------------------------------------
+# create time variables: days from treatment
+demo['ID'] = demo$id
+gv_long = gv %>%
+  group_by(ID, drug) %>%
+  mutate(time = Date - first(Date)) %>%
+  ungroup() %>%
+  left_join(demo %>% select(ID, Age, sex_cat, BMI.at.baseline, Baseline.HbA1c, 
+                            Baseline.Systolic.blood.pressure, Baseline.diastolic.blood.pressure), by = "ID") 
+
+gv_long$time = as.numeric(gv_long$time)
+
+# subset demo with ID contains both baseline and CGM data (of 45 enrolled in the study, 25 had CGM data)
+demo_sub = demo[demo$id %in% unique(gv$ID),]
+```
+
+## 1. Cross-tab table for treatment group and drug
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
+# table(demo$Treatment.group)
+# unique(gv_long[gv_long$group==0,"ID"])
+# unique(gv_long[gv_long$group==1,"ID"])
+# # group A
+# unique(gv_long[gv_long$drug == 1 & gv_long$period == 0,"ID"]) # drug x 11
+# unique(gv_long[gv_long$drug == 0 & gv_long$period == 1,"ID"]) # drug y 8
+# # group B
+# unique(gv_long[gv_long$drug == 0 & gv_long$period == 0,"ID"]) # drug y 14
+# unique(gv_long[gv_long$drug == 1 & gv_long$period == 1,"ID"]) # drug x 13
+
+group_freq = data.frame("Treatment" = c("Drug X --> Y", "Drug Y --> X"),"Total" = c(19,26), "With CGM" = c(11,14))
+rownames(group_freq) = c("Group A", "Group B")
+
+drug_period = data.frame("Period 1" = c(11,14), "Period 2" = c(13,8))
+rownames(drug_period) = c("Drug X", "Drug Y")
+kable(group_freq, booktabs = T, format = 'latex', caption = 'Frequency of each group') %>%
+  kable_styling(latex_options = c("HOLD_position"))
+kable(drug_period, booktabs = T, format = 'latex', caption = 'Frequency of drug by period') %>%
+  kable_styling(latex_options = c("HOLD_position"))
+```
+
+## 2. Treatment duration for each individual by group
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
+# plots: treatment duration plot with wash out duration ----------------
+# drug x: blue, drug y: red, wash out period: green
+print(ggplot() + 
+  geom_rect(data = demo[demo$tm_group == 1,], 
+            aes(xmin = Date.of.Baseline.for.Drug.1, ymin = id, 
+                xmax = end_of_drug1, ymax = id), color="blue", alpha=0.5)+
+  geom_rect(data = demo[demo$tm_group == 1,], 
+            aes(xmin = Date.of.Baseline.for.Drug.2, ymin = id, 
+                xmax = end_of_drug2, ymax = id), color="red", alpha=0.5) +
+  geom_rect(data = demo[demo$tm_group == 1,], 
+            aes(xmin = end_of_drug1, ymin = id, 
+                xmax = Date.of.Baseline.for.Drug.2, ymax = id), color="green", alpha=0.1) +
+  scale_y_continuous("ID", breaks =demo[demo$tm_group == 1,"id"]) +
+  scale_x_discrete("Treatment duration") +
+  ggtitle("Group A: Drug X/Drug Y Subject Treatment Duration") +
+  geom_text_repel(data = demo[demo$tm_group == 1,], 
+                  aes(x = wash_midpoint, y = id, label = wash_duration), size = 2))
+
+print(ggplot() + 
+  geom_rect(data = demo[demo$tm_group == 0,], 
+            aes(xmin = Date.of.Baseline.for.Drug.1, ymin = id, 
+                xmax = end_of_drug1, ymax = id), color="red", alpha=0.5)+
+  geom_rect(data = demo[demo$tm_group == 0,], 
+            aes(xmin = Date.of.Baseline.for.Drug.2, ymin = id, 
+                xmax = end_of_drug2, ymax = id), color="blue", alpha=0.5) +
+  geom_rect(data = demo[demo$tm_group == 0,], 
+            aes(xmin = end_of_drug1, ymin = id, 
+                xmax = Date.of.Baseline.for.Drug.2, ymax = id), color="green", alpha=0.1) +
+  scale_y_continuous("ID", breaks =demo[demo$tm_group == 0,"id"]) +
+  scale_x_discrete("Treatment duration") +
+  ggtitle("Group B: Drug Y/Drug X Subject Treatment Duration") +
+  geom_text_repel(data = demo[demo$tm_group == 0,], 
+                  aes(x = wash_midpoint, y = id, label = wash_duration), size = 2))
+
+```
+
+
+## 3. Descriptive tables for Glucose Variability Indices
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
+# descp for GV index
+gv$LBGI = as.numeric(gv$LBGI)
+
+test = gv[,c("glucose_mean","glucose_sd","glucose_CV","TIR", "TAR", "TBR", "LBGI")]
+test_x = gv[gv$drug == 1,c("glucose_mean","glucose_sd","glucose_CV","TIR", "TAR", "TBR", "LBGI")]
+test_y = gv[gv$drug == 0,c("glucose_mean","glucose_sd","glucose_CV","TIR", "TAR", "TBR", "LBGI")]
+
+descp = data.frame(Var = c("Glucose Mean","Glucose SD","Glucose CV","TIR", "TAR", "TBR", "LBGI"),
+                   N = apply(test, 2, function(x) sum(!is.na(x))),
+                   Mean = colMeans(test),
+                   SD = apply(test, 2, sd),
+                   Median = apply(test, 2, median))
+
+descp_x = data.frame(Var = c("Glucose Mean","Glucose SD","Glucose CV","TIR", "TAR", "TBR", "LBGI"),
+                   N = apply(test_x, 2, function(x) sum(!is.na(x))),
+                   Mean = colMeans(test_x),
+                   SD = apply(test_x, 2, sd),
+                   Median = apply(test_x, 2, median))
+
+descp_y = data.frame(Var = c("Glucose Mean","Glucose SD","Glucose CV","TIR", "TAR", "TBR", "LBGI"),
+                     N = apply(test_y, 2, function(x) sum(!is.na(x))),
+                     Mean = colMeans(test_y),
+                     SD = apply(test_y, 2, sd),
+                     Median = apply(test_y, 2, median))
+descp_drug = cbind(descp_x, descp_y[,c(2:4)])
+kable(descp, booktabs = T, row.names = F,format = 'latex', caption = 'Descriptive for Glucose Variability Indices') %>%
+  kable_styling(latex_options = c("HOLD_position"))
+kable(descp_drug, booktabs = T, row.names = F, format = 'latex', caption = 'Descriptive for Glucose Variability Indices by Drug') %>%
+  add_header_above(c(" ", "Drug X" = 3, "Drug Y" = 3)) %>%
+  kable_styling(latex_options = c("repeat_header", "HOLD_position"))
+```
+
+
+## 4. Histogram for Glucose Variability Indices
+```{r hist, fig.height=3, warning=FALSE, message=FALSE, echo = FALSE}
+# distribution of glucose mean, cv, SD ------------------------
+theme_set(theme_bw())
+drug.labs = c("Drug Y", "Drug X")
+names(drug.labs) = c(0, 1)
+per.labs = c("Period 1", "Period 2")
+names(per.labs) = c(0, 1)
+
+hist1 = gghistogram(gv, x = "glucose_mean", y = "..density..", 
+                    xlab = "Glucose Mean (mg/dL)", add = "mean", bins = 30, add_density = TRUE) +
+  theme(axis.text=element_text(size=8), 
+        axis.title=element_text(size=10), plot.title = element_text(size=11)) + 
+  ggtitle("Glucose Mean (mg/dL)")
+
+hist2=gghistogram(gv, x = "glucose_sd", y = "..density..", 
+                  xlab = "Glucose SD (mg/dL)", add = "mean", bins = 30, add_density = TRUE) +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), 
+        plot.title = element_text(size=11))  + 
+  ggtitle("Glucose SD (mg/dL)")
+
+hist3=gghistogram(gv, x = "glucose_CV", y = "..density..", 
+                  xlab = "Glucose CV (%)", add = "mean", bins = 30, add_density = TRUE) +
+  theme(axis.text=element_text(size=8), 
+        axis.title=element_text(size=10), plot.title = element_text(size=11)) + 
+  ggtitle("Glucose CV (%)")
+
+hist4=gghistogram(gv, x = "LBGI", y = "..density..", 
+                  xlab = "Low Blood Glucose Index", add = "median", bins = 30, add_density = TRUE) +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), 
+        plot.title = element_text(size=11)) + 
+  ggtitle("Low Blood Glucose Index (LBGI)")
+
+hist5=gghistogram(gv, x = "TIR", y = "..density..", 
+                  xlab = "Time in Range (%)", add = "median", bins = 30, add_density = TRUE)  +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), 
+        plot.title = element_text(size=11)) + 
+  ggtitle("Time in Range (TIR)")
+
+hist6=gghistogram(gv, x = "TAR", y = "..density..", 
+                  xlab = "Time above Range (%)", add = "median", bins = 30, add_density = TRUE)  +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), 
+        plot.title = element_text(size=11)) + 
+  ggtitle("Time above Range (TAR)")
+
+hist7=gghistogram(gv, x = "TBR", y = "..density..", 
+                  xlab = "Time below Range (%)", add = "median", bins = 30, add_density = TRUE) +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), 
+        plot.title = element_text(size=11)) + 
+  ggtitle("Time below Range (TBR)")
+
+grid.arrange(hist1, hist2, hist3, nrow = 1)
+grid.arrange(hist4, hist5, nrow = 1)
+grid.arrange(hist6, hist7, nrow = 1)
+```
+
+
+## 5. Trajectory of glucose mean by drug
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
+print(ggplot(data = gv_long[gv_long$drug == 1,]) +
+  geom_line(aes(x = time, y = glucose_mean, color = factor(ID))) +
+  scale_x_continuous("Drug X treatment days", 
+                     breaks = seq(0,max(gv_long[gv_long$drug == 1,"time"]),2)) + 
+  scale_y_continuous("glucose mean", 
+                     breaks = seq(0, max(gv_long[gv_long$drug == 1,"glucose_mean"]), 20)) +
+  labs(col = "ID"))
+
+print(ggplot(data = gv_long[gv_long$drug == 0,]) +
+  geom_line(aes(x = time, y = glucose_mean, color = factor(ID))) +
+  scale_x_continuous("Drug Y treatment days", 
+                     breaks = seq(0,max(gv_long[gv_long$drug == 0,"time"]),2)) + 
+  scale_y_continuous("glucose mean", 
+                     breaks = seq(0, max(gv_long[gv_long$drug == 0,"glucose_mean"]), 20)) +
+  labs(col = "ID"))
+```
+
+
+## 6. Proportion of target readings
+```{r, warning=FALSE, message=FALSE, echo = FALSE}
+TIR_x = count(gv[gv$TIR>70 & gv$drug == 1 ,"TIR"])/count(gv[ gv$drug == 1,"TIR"])*100
+TIR_y =count(gv[gv$TIR>70 & gv$drug == 0 ,"TIR"])/count(gv[ gv$drug == 0 ,"TIR"])*100
+TAR_x =count(gv[gv$TAR<25 & gv$drug == 1 ,"TAR"])/count(gv[ gv$drug == 1,"TAR"])*100
+TAR_y =count(gv[gv$TAR<25 & gv$drug == 0 ,"TAR"])/count(gv[ gv$drug == 0 ,"TAR"])*100
+TBR_x =count(gv[gv$TBR<4 & gv$drug == 1 ,"TBR"])/count(gv[ gv$drug == 1,"TBR"])*100
+TBR_y = count(gv[gv$TBR<4 & gv$drug == 0 ,"TBR"])/count(gv[ gv$drug == 0 ,"TBR"])*100
+
+TIR_table = data.frame(`Drug X` = c(TIR_x$n, TAR_x$n, TBR_x$n), `Drug Y` = c(TIR_y$n, TAR_y$n, TBR_y$n))
+rownames(TIR_table) = c("TIR > 70%", "TAR < 25%", "TBR < 4%")
+kable(TIR_table, booktabs = T, format = 'latex', caption = 'Proportion of target readings') %>%
+  kable_styling(latex_options = c("HOLD_position"))
+```
+
+### 6.1 Use chi-square test to access if percentage of target readings are significantly different from two type of drugs
+```{r chisq, warning=FALSE, message=FALSE}
+chisq.test(as.vector(gv[gv$TIR>70,"TIR"]$TIR), as.vector(gv[gv$TIR>70,"drug"]$drug))
+chisq.test(as.vector(gv[gv$TAR<25,"TAR"]$TAR), as.vector(gv[gv$TAR<25,"drug"]$drug))
+chisq.test(as.vector(gv[gv$TBR<4,"TBR"]$TBR), as.vector(gv[gv$TBR<4,"drug"]$drug))
+```
+
+### 6.2 Barplot of Proportion of target readings
+```{r barplor, warning=FALSE, message=FALSE, echo = FALSE}
+TIR_bar = data.frame(x = c("TIR > 70%","TIR > 70%","TAR < 25%","TAR < 25%","TBR < 4%","TBR < 4%"), 
+                     drug = c("Drug X", "Drug Y","Drug X", "Drug Y","Drug X", "Drug Y"), 
+                     y = c(77.9, 82.7, 73.8, 77.4, 91.2, 75.2))
+ggbarplot(data = TIR_bar, x = "x", y = "y", fill = "drug",
+          position = position_dodge(0.9), 
+          xlab = "Standard value", palette ="grey") + 
+  scale_y_continuous("Percentage (%)",
+                     breaks = seq(0,100,20), limits = c(0,100))
+```
+
+
+## 7. Parametric / Non-parametric: to conduct univariate association of drug effect and the indices
+### 7.1 Two sample t-test for drug and period effect:
+```{r ttest, warning=FALSE, message=FALSE, echo = FALSE}
+ttest_mean_drug = t.test(glucose_mean ~ drug, data = gv)
+ttest_sd_drug = t.test(glucose_sd ~ drug, data = gv)
+ttest_cv_drug = t.test(glucose_CV ~ drug, data = gv)
+ttest_TIR_drug = t.test(TIR ~ drug, data = gv)
+ttest_TAR_drug = t.test(TAR ~ drug, data = gv)
+ttest_TBR_drug = t.test(TBR ~ drug, data = gv)
+ttest_LBGI_drug = t.test(LBGI ~ drug, data = gv)
+ttest_mean_per = t.test(glucose_mean ~ period, data = gv)
+ttest_sd_per = t.test(glucose_sd ~ period, data = gv)
+ttest_cv_per = t.test(glucose_CV ~ period, data = gv)
+ttest_TIR_per = t.test(TIR ~ period, data = gv)
+ttest_TAR_per = t.test(TAR ~ period, data = gv)
+ttest_TBR_per = t.test(TBR ~ period, data = gv)
+ttest_LBGI_per = t.test(LBGI ~ period, data = gv)
+
+# drug
+ttest_drug = data.frame("t" = c(ttest_mean_drug$statistic, ttest_sd_drug$statistic,
+                                ttest_cv_drug$statistic, ttest_TIR_drug$statistic,
+                                ttest_TAR_drug$statistic, ttest_TBR_drug$statistic,
+                                ttest_LBGI_drug$statistic), 
+                        "p-value" = c(ttest_mean_drug$p.value, ttest_sd_drug$p.value,
+                                      ttest_cv_drug$p.value, ttest_TIR_drug$p.value,
+                                      ttest_TAR_drug$p.value, ttest_TBR_drug$p.value, 
+                                      ttest_LBGI_drug$p.value))
+ttest_drug$p.value = sprintf('%.3f', ttest_drug$p.value)
+ttest_drug$t = sprintf('%.3f', ttest_drug$t)
+# period
+ttest_per = data.frame("t" = c(ttest_mean_per$statistic, ttest_sd_per$statistic,
+                               ttest_cv_per$statistic, ttest_TIR_per$statistic, 
+                               ttest_TAR_per$statistic, ttest_TBR_per$statistic,
+                               ttest_LBGI_per$statistic), 
+                       "p-value" = c(ttest_mean_per$p.value, ttest_sd_per$p.value,
+                                     ttest_cv_per$p.value, ttest_TIR_per$p.value, 
+                                     ttest_TAR_per$p.value, ttest_TBR_per$p.value,
+                                     ttest_LBGI_per$p.value))
+ttest_per$p.value = sprintf('%.3f', ttest_per$p.value)
+ttest_per$t = sprintf('%.3f', ttest_per$t)
+
+# merge
+ttest_table = cbind(ttest_drug, ttest_per)
+rownames(ttest_table) = c("Glucose Mean","Glucose SD","Glucose CV","TIR", "TAR", "TBR", "LBGI")
+kable(ttest_table, booktabs = T, format = 'latex', caption = 'Two Sample t-test Results') %>%
+  add_header_above(c(" ", "Drug X vs Y" = 2, "Period 1 vs 2" = 2)) %>%
+  kable_styling(latex_options = c("repeat_header", "HOLD_position"))
+```
+
+### 7.2 Wilxocon test for drug and period effect:
+```{r, echo = FALSE, warning=FALSE, message=FALSE,}
+wx_LBGI_drug = wilcox.test(LBGI ~ drug, data = gv, exact = FALSE)
+wx_LBGI_per = wilcox.test(LBGI ~ period, data = gv, exact = FALSE)
+wx_TIR_drug = wilcox.test(TIR ~ drug, data = gv, exact = FALSE)
+wx_TIR_per = wilcox.test(TIR ~ period, data = gv, exact = FALSE)
+wx_TAR_drug = wilcox.test(TAR ~ drug, data = gv, exact = FALSE)
+wx_TAR_per = wilcox.test(TAR ~ period, data = gv, exact = FALSE)
+wx_TBR_drug = wilcox.test(TBR ~ drug, data = gv, exact = FALSE)
+wx_TBR_per = wilcox.test(TBR ~ period, data = gv, exact = FALSE)
+
+# drug
+wx_drug = data.frame("W" = c(wx_LBGI_drug$statistic, wx_TIR_drug$statistic, 
+                             wx_TAR_drug$statistic, wx_TBR_drug$statistic), 
+                     "p-value" = c(wx_LBGI_drug$p.value, wx_TIR_drug$p.value, 
+                                   wx_TAR_drug$p.value, wx_TBR_drug$p.value))
+rownames(wx_drug) = c("LBGI", "TIR", "TAR", "TBR")
+
+# period
+wx_per = data.frame("W" = c(wx_LBGI_per$statistic, wx_TIR_per$statistic, 
+                            wx_TAR_per$statistic, wx_TBR_per$statistic), 
+                    "p-value" = c(wx_LBGI_per$p.value, wx_TIR_per$p.value, 
+                                  wx_TAR_per$p.value, wx_TBR_per$p.value))
+rownames(wx_per) = c("LBGI", "TIR", "TAR", "TBR")
+
+# merge
+wx_table = cbind(wx_drug, wx_per)
+kable(wx_table, booktabs = T, format = 'latex', caption = 'Wilxocon test Results') %>%
+  add_header_above(c(" ", "Drug X vs Y" = 2, "Period 1 vs 2" = 2)) %>%
+  kable_styling(latex_options = c("repeat_header", "HOLD_position"))
+```
+
+## 8. Histogram for Glucose Variability Indices by drug
+```{r, echo = FALSE, warning=FALSE, message=FALSE,}
+hist11 = gghistogram(gv, x = "glucose_mean", y = "..density..", xlab = "Glucose Mean (mg/dL)", add = "mean", bins = 30, add_density = TRUE) +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)) +
+  ggtitle(paste0("Glucose mean by drug, t-test p = ", format(ttest_mean_drug$p.value, digits = 1))) +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), plot.title = element_text(size=11))
+
+hist22 =gghistogram(gv, x = "glucose_sd", y = "..density..", xlab = "Glucose SD (mg/dL)", add = "mean", bins = 30, add_density = TRUE) +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)) +
+  ggtitle(paste0("Glucose SD by drug, t-test p = ", format(ttest_sd_drug$p.value, digits = 1))) +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), plot.title = element_text(size=11))
+
+hist33 =gghistogram(gv, x = "glucose_CV", y = "..density..", xlab = "Glucose CV (%)", add = "mean", bins = 30, add_density = TRUE) +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)) + 
+  ggtitle("Glucose CV by drug, t-test p < 0.001 ") +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), plot.title = element_text(size=11))
+
+hist44 = gghistogram(gv, x = "LBGI", y = "..density..", xlab = "Low Blood Glucose Index", add = "mean", bins = 30, add_density = TRUE) +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)) +
+  ggtitle("LBGI by drug, Wilcoxon test p < 0.001") +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), plot.title = element_text(size=11))
+
+hist55 =gghistogram(gv, x = "TIR", y = "..density..", xlab = "Time in Range (%)", add = "mean", bins = 30, add_density = TRUE) +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)) +
+  ggtitle(paste0("TIR by drug, Wilcoxon test p = ", format(wx_TIR_drug$p.value, digits = 1))) +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), plot.title = element_text(size=11))
+
+hist66 =gghistogram(gv, x = "TAR", y = "..density..", xlab = "Time above Range (%)", add = "mean", bins = 30, add_density = TRUE) +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)) +
+  ggtitle(paste0("TAR by drug, Wilcoxon test p = ", format(wx_TAR_drug$p.value, digits = 1))) +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), plot.title = element_text(size=11))
+
+hist77 =gghistogram(gv, x = "TBR", y = "..density..", xlab = "Time below Range (%)", add = "mean", bins = 30, add_density = TRUE) +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)) +
+  ggtitle("TBR by drug, Wilcoxon test p < 0.001") +
+  theme(axis.text=element_text(size=8), axis.title=element_text(size=10), plot.title = element_text(size=11))
+
+grid.arrange(hist11, hist22, hist33, ncol = 1)
+grid.arrange(hist44, hist55, hist66,hist77, ncol = 2, nrow = 2)
+```
+
+## 9. Linear mixed model
+### 9.1 Random Intercept
+```{r, echo = FALSE, warning=FALSE, message=FALSE,}
+# sex does not contain sufficient observations
+gv_long$LBGI = as.numeric(gv_long$LBGI)
+RI_mean = lme(glucose_mean ~ time + drug:time, random = ~ 1|ID, data = gv_long)
+RI_sd = lme(glucose_sd ~ time + drug:time, random = ~ 1|ID, data = gv_long)
+RI_cv = lme(glucose_CV ~ time + drug:time, random = ~ 1|ID, data = gv_long)
+RI_TIR = lme(TIR ~ time + drug:time, random = ~ 1|ID, data = gv_long)
+RI_TAR = lme(TAR ~ time + drug:time, random = ~ 1|ID, data = gv_long)
+RI_TBR = lme(TBR ~ time + drug:time, random = ~ 1|ID, data = gv_long)
+RI_LBGI = lme(LBGI ~ time + drug:time, random = ~ 1|ID, data = gv_long)
+
+```
+
+#### 1. glucose mean
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RI_mean)
+```
+
+#### 2. glucose SD
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RI_sd)
+```
+
+#### 3. glucose CV
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RI_cv)
+```
+
+#### 4. TIR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RI_TIR)
+```
+
+#### 5. TAR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RI_TAR)
+```
+
+#### 6. TBR
+```{r,echo = FALSE, warning=FALSE, message=FALSE}
+summary(RI_TBR)
+```
+
+#### 7. LBGI
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RI_LBGI)
+```
+
+
+### 9.2 Random slope with autogressive(1) correlation structure
+* glucose_SD, LBGI: cannot converge
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+RS_mean = lme(glucose_mean ~ time + drug:time, random = ~ time|ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+# RS_sd = lme(glucose_sd ~ time + drug:time, random = ~ time|ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+RS_cv = lme(glucose_CV ~ time + drug:time, random = ~ time|ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+RS_TIR = lme(TIR ~ time + drug:time, random = ~ time|ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+RS_TAR = lme(TAR ~ time + drug:time, random = ~ time|ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+RS_TBR = lme(TBR ~ time + drug:time, random = ~ time|ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+# RS_LBGI = lme(LBGI ~ time + drug*time, random = ~ time|ID,  correlation = corAR1(form = ~ time|ID/drug), data =gv_long)
+
+```
+
+#### 1. glucose mean
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_mean)
+```
+
+#### 2. glucose SD: did not converge   
+
+#### 3. glucose CV
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_cv)
+```
+
+#### 4. TIR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TIR)
+```
+
+#### 5. TAR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TAR)
+```
+
+#### 6. TBR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TBR)
+```
+
+#### 7. LBGI: did not converge
+
+
+### 9.3 Random slope with compound symmetry correlation structure
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+RS_mean_cs = lme(glucose_mean ~ time + drug:time, random = ~ time|ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+RS_sd_cs = lme(glucose_sd ~ time + drug:time, random = ~ time|ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+RS_cv_cs = lme(glucose_CV ~ time + drug:time, random = ~ time|ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+RS_LBGI_cs = lme(LBGI ~ time + drug:time, random = ~ time|ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+RS_TIR_cs = lme(TIR~ time + drug:time, random = ~ time|ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+RS_TAR_cs = lme(TAR~ time + drug:time, random = ~ time|ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+RS_TBR_cs = lme(TBR ~ time + drug:time, random = ~ time|ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+```
+
+#### 1. glucose mean
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_mean_cs)
+```
+
+#### 2. glucose SD
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_sd_cs)
+```
+
+#### 3. glucose CV
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_cv_cs)
+```
+
+#### 4. TIR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TIR_cs)
+```
+
+#### 5. TAR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TAR_cs)
+```
+
+#### 6. TBR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TBR_cs)
+```
+
+#### 7. LBGI
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_LBGI_cs)
+```
+
+
+### 9.4 Continue model building using glucose CV and TBR
+#### Adjust for period to see cross-over effect: random slope with AR(1)
+final model:  
+glucose SD: random slope + CS    
+glucose CV: random slope + CS  
+LBGI: random slope + CS    
+TBR: random slope + AR(1)  
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+RS_sd_per = lme(glucose_sd ~ time + drug:time + drug:period, random = ~ time |ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+
+RS_cv_per = lme(glucose_CV ~ time + drug:time + drug:period, random = ~ time |ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+
+RS_LBGI_per = lme(LBGI ~ time + drug:time + drug:period, random = ~ time |ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+
+RS_TBR_per = lme(TBR ~ time + drug:time + drug:period, random = ~ time |ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+
+RS_TIR_per = lme(TIR ~ time + drug:time + drug:period, random = ~ time |ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+
+```
+
+##### (1) glucose_SD
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_sd_per)
+```
+
+
+##### (2) glucose_CV
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_cv_per)
+```
+
+##### (3) TBR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TBR_per)
+```
+
+##### (4) LBGI
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_LBGI_per)
+```
+
+##### (5) TIR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TIR_per)
+```
+
+
+### 9.5 add baseline variables
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+RS_sd_base = lme(glucose_sd ~ time + drug:time + Age + BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, random = ~ time |ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+
+
+RS_cv_base_cs = lme(glucose_CV ~ time + drug:time + Age + BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, random = ~ time |ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+
+RS_TIR_base_cs = lme(TIR ~ time + drug:time + Age + BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, random = ~ time |ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+
+# RS_LBGI_per_base_cs = lme(LBGI ~ time + drug:time + Age + BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, random = ~ time |ID, correlation = corCompSymm(form = ~ time|ID/drug), data = gv_long)
+
+# RS_TBR_per_base_ar = lme(TBR ~ time + drug:time + Age + BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, random = ~ time |ID, correlation = corAR1(form = ~ time|ID/drug), data = gv_long)
+
+```
+
+
+##### (1) glucose SD: random slope CS
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_sd_base)
+```
+
+##### (2) glucose CV: random slope CS
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_cv_base_cs)
+```
+
+##### (3) LBGI: random slope CS did not converge
+##### (4) TBR: random slope AR(1) did not converge
+
+##### (5) TIR
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+summary(RS_TIR_base_cs)
+```
+
+
+```{r corr, echo = FALSE, eval = FALSE}
+# correlation of GV index ----------------------
+library(corrplot)
+library("Hmisc")
+corr_matrix = rcorr(as.matrix(gv[,c("glucose_mean","glucose_sd","glucose_CV","TIR", "TAR", "TBR", "LBGI")]))
+# Insignificant correlations are leaved blank
+corrplot(corr_matrix$r, type="upper", order="hclust", 
+         p.mat = corr_matrix$P, sig.level = 0.05, insig = "blank")
+
+# lm model for glucose indices
+data_model = gv_long %>% select(-Date, -case, -TIRt, -TARt, -TBRt, -LBGIt)
+data_model$LBGI = as.numeric(data_model$LBGI)
+lm_mean = lm(glucose_mean ~ factor(drug) + Age + sex_cat + 
+               BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, data = data_model)
+lm_cv = lm(glucose_CV ~ factor(drug) + Age + sex_cat + 
+               BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, data = data_model)
+lm_SD = lm(glucose_sd ~ factor(drug) + Age + sex_cat + 
+               BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, data = data_model)
+lm_TIR = lm(TIR ~ factor(drug) + Age + sex_cat + 
+               BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, data = data_model)
+lm_TAR = lm(TAR ~ factor(drug) + Age + sex_cat + 
+              BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, data = data_model)
+lm_TBR = lm(TBR ~ factor(drug) + Age + sex_cat + 
+              BMI.at.baseline + Baseline.HbA1c + Baseline.Systolic.blood.pressure + Baseline.diastolic.blood.pressure, data = data_model)
+
+
+par(mfrow = c(2, 2))
+plot(lm_TBR)
+
+```
+
+
+```{r, echo = F, eval = F}
+# Histogram of glucose variabilities by drug types -------------------
+# Glucose mean
+print(ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = glucose_mean),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Glucose Mean") +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)))
+
+ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = glucose_mean),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Glucose Mean") +
+  facet_wrap(period~ drug, labeller = labeller(drug = drug.labs, period = per.labs))
+# Glucose SD
+print(ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = glucose_sd),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Glucose SD") +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)))
+
+ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = glucose_sd),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Glucose SD") +
+  facet_wrap(period~ drug, labeller = labeller(drug = drug.labs, period = per.labs))
+
+# Glucose CV
+print(ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = glucose_CV),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Glucose CV") +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)))
+
+ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = glucose_CV),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Glucose CV") +
+  facet_wrap(period~ drug, labeller = labeller(drug = drug.labs, period = per.labs))
+
+# TIR
+print(ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = TIR),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Time in Range (70-180 mg/dL)") +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)))
+
+ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x =TIR),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Time in Range (70-180 mg/dL)") +
+  facet_wrap(period~ drug, labeller = labeller(drug = drug.labs, period = per.labs))
+
+# TAR
+print(ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = TAR),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Time above Range (>180 mg/dL)") +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)))
+
+ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x =TAR),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Time above Range (>180 mg/dL)") +
+  facet_wrap(period~ drug, labeller = labeller(drug = drug.labs, period = per.labs))
+
+# TBR
+print(ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = TBR),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Time below Range (<70 mg/dL)") +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)))
+
+ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x =TBR),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Time below Range (<70 mg/dL)") +
+  facet_wrap(period~ drug, labeller = labeller(drug = drug.labs, period = per.labs))
+
+# LBGI
+print(ggplot(data = gv, aes(fill = as.factor(drug))) +
+  geom_histogram(aes(x = LBGI),position = "identity", bins = 30, alpha = 0.5, color = "black") +
+  scale_x_continuous("Low blood glucose index") +
+  facet_wrap(~ drug, labeller = labeller(drug = drug.labs)))
+```
+
+
+```{r, out.width=c('33%','33%','33%'), eval = FALSE, echo = FALSE}
+# trajectory of glucose mean ----------------
+for (k in c(24, 26, 28, 30, 31, 34, 36, 38, 40, 43, 45, 46, 47, 48, 49, 40, 51, 52)){
+  print(ggplot(data = gv[gv$ID ==k,]) +
+  geom_point(aes(x = Date, y = glucose_mean, color = factor(drug))) +
+  geom_errorbar(aes(x = Date, ymin = glucose_mean-glucose_sd, 
+                    ymax = glucose_mean+glucose_sd), width=0.1, alpha = 0.5,
+                position=position_dodge(.9)) +
+    ggtitle(paste("ID:", k)) +
+    scale_y_continuous("Mean glucose", 
+                       breaks = seq(min(gv[gv$ID ==k,"glucose_mean"]), max(gv[gv$ID ==k,"glucose_mean"]), 20)) +
+    labs(col = "Drug")
+  )
+
+}
+```
