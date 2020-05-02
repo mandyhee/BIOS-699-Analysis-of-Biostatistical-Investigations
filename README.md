@@ -40,8 +40,16 @@ Data were collected on N = 1642 HNSCC patients from the University of Michigan S
 ### III. Statistical Analysis
 Overall survival and progression-free survival were being assessed using Kaplan-Meier Estimators. Log-rank test was assessed to compare survival curves for covariates of interest that met proportional assumptions, while Wilcoxon test was assessed to compare survival curves that violated proportional assumptions.   
 
-Multivariate Cox Hazard models were built to evaluate the association between comorbidity drugs and tumor sites with HNSCC patient’s survival time. Additionally, Schoenfeld’s global test was assessed to test proportional hazard assumption in the Cox model, if the global proportional hazard assumption was violated (p < 0.05), risk factors that violated the proportional hazard assumption will be stratified in the model instead of including in the model as confounders.
-## Project 4
-### I. Project Description
-### II. Studt Design
-### III. Statistical Analysis
+Multivariate Cox Hazard models were built to evaluate the association between comorbidity drugs and tumor sites with HNSCC patient’s survival time. Additionally, Schoenfeld’s global test was assessed to test proportional hazard assumption in the Cox model, if the global proportional hazard assumption was violated (p < 0.05), risk factors that violated the proportional hazard assumption will be stratified in the model instead of including in the model as confounders.  
+
+## Project 4: Power Analysis for Needle Biopsy Deflection in Prostate Cancer Patients
+### I. Project Description 
+Prostate cancer is the second most frequent malignancy in men worldwide as well as the second leading cause of death by cancer in men (after lung cancer). Currently, only needle biopsies are the standard of care to confirm prostate cancer’s presence. A new needle tip for prostate cancer biopsy has been developed to reduce the deflection comparing to standard needle tip.  
+
+In this study, our primary objective is to simulate a randomized clinical trial to show that by using 500 new needles, there is an 80% power with 5% Type 1 error to detect at least 40% deflection reduction, comparing to standard needles. Moreover, we are also interested in knowing the level of deflection reduction if the number of new needles increase to 600, under 80% power and 5% Type 1 error.
+
+### II. Simulation Design
+Two types of simulations were designed to test the power of needle effects on mean deflection reduction:  
+(1) Test mean of reduction in deflections between standard and new needle using one sample t test with p = 0.05 level.   
+(2) Fit multivariate linear regression with GEE, conduct Wald test to test needle effect on reduction in mean deflection between standard and new needles with p = 0.05 level.   
+
