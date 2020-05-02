@@ -1,6 +1,6 @@
 # BIOS-699-Analysis-of-Biostatistical-Investigations
 University of Michigan Department of Biostatistics course
-
+##### NOTE: Due to data confidentiality, only R or SAS codes are presented in this repo, not the results.
 ## Project 1: Investigation of Glucose Variability Indices in Type II Diabetes Patients
 ### I. Project Description
 Diabetes has been the seventh leading cause of death in United States over the past five years, therefore, the use of continuous glucose monitoring (CGM) of tracking real-time blood glucose level became an important indices to control diabetes progression.   
