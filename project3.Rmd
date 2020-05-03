@@ -1,0 +1,318 @@
+---
+title: "BIOS 699 Project 3: Investigation of common chronic medication use and tumor sites in head and neck squamous cell carcinoma (HNSCC)"
+author: "Mandy Ho"
+date: "Analysis Complete: 3/20/2020"
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+- \usepackage[english]{babel}
+- \usepackage[utf8]{inputenc}
+- \usepackage[absolute]{textpos}
+- \usepackage{fancyhdr}
+output: 
+    pdf_document: default
+---
+
+```{r setup, include=FALSE, warning = FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(survival)
+library(prodlim)
+library(tidyverse)
+library(survminer)
+library(rms)
+library(knitr)
+library(missForest)
+library(VIM)
+require(cmprsk)
+```
+
+
+# I. Project Description
+
+Head and neck squamous cell carcinoma (HNSCC) are cancer that mostly originate from lip, oral cavity, hypopharynx, oropharynx, nasopharynx or larynx. Prior research has identified several important associations between comorbidities medications with cancer outcome. However, there are lack of studies on how comorbidities drugs effect cancer outcome in rarer cancer such as HNSCC.
+
+The goal for this study is to determine if common chronic medications (aspirin, metformin, statin, insulin) as well as different tumor sites (larynx, oropharynx, oral cavity) are associated with HNSCC patient’s survival outcomes.
+
+# II. Study Design
+
+Data were collected on N = 1642 HNSCC patients from the University of Michigan Specialized Program of Research Excellence (SPORE). Eligibility criteria including participants greater than 18 years of age, must be English speaker, no barriers which affect study compliance, incident of cancer must be no HNSCC diagnosed last 5 years and no previous treatment. Information were collected through patient interviews, pretreatment surveys, medical record extractions, annual chart reviews and follow up surveys, survival time and recurrence time were also collected throughout the study. Missing data imputation was conducted by Random Forest method.
+
+# III. Statistical Analysis
+
+Overall survival and progression-free survival were being assessed using Kaplan-Meier Estimators. Log-rank test was assessed to compare survival curves for covariates of interest that met proportional assumptions, while Wilcoxon test was assessed to compare survival curves that violated proportional assumptions.
+
+Multivariate Cox Hazard models were built to evaluate the association between comorbidity drugs and tumor sites with HNSCC patient’s survival time. Additionally, Schoenfeld’s global test was assessed to test proportional hazard assumption in the Cox model, if the global proportional hazard assumption was violated (p < 0.05), risk factors that violated the proportional hazard assumption will be stratified in the model instead of including in the model as confounders.
+
+```{r data_cleaning, echo=FALSE,  warning = FALSE, message=FALSE}
+tdata = read.csv(file = "../HNSCC full data set 699 Project.csv", header = T)
+# summary(tdata$how_old)
+# create age category
+tdata[tdata == ''] = NA
+tdata['Age_group'] = ifelse(tdata$how_old <= 52, 1, 
+                            ifelse( tdata$how_old > 52 & tdata$how_old <= 59, 2, 
+                                   ifelse( tdata$how_old > 59 & tdata$how_old <= 68, 3,
+                                           ifelse( tdata$how_old > 68, 4, NA))))
+tdata$Age_group = factor(tdata$Age_group, levels = c(1,2,3,4), labels = c(1,2,3,4))
+
+tdata['Larynx'] = ifelse(tdata$site == "Larynx" , 1, 0)
+tdata['Oropharynx'] = ifelse(tdata$site == "Oropharynx" , 1, 0)
+tdata['Oral Cavity'] = ifelse(tdata$site == "Oral Cavity" , 1, 0)
+tdata['Other'] = ifelse(tdata$site == "Other (HP or other)" , 1, 0)
+
+# tdata['drinking'] = ifelse(tdata$drinker == "current", 2,
+#                            ifelse(tdata$drinker == "former drinker > 12 mos", 1,
+#                                   ifelse(tdata$drinker == "never", 0, NA)))
+# 
+# tdata['smoking'] = ifelse(tdata$smoker == "current in past 12 mos", 2,
+#                            ifelse(tdata$smoker == "former smoker > 12 mos",1,
+#                                   ifelse(tdata$smoker == "never", 0, NA)))
+
+# tdata['hpv'] = ifelse(tdata$hpvstat == "Positive", 1,
+#                       ifelse(tdata$hpvstat == "Negative", 0,
+#                              ifelse(tdata$hpvstat == "invalid/missing", NA, NA)))
+
+tdata$drinker = factor(tdata$drinker, levels = c("never", "former drinker > 12 mos", "current"))
+tdata$smoker = factor(tdata$smoker, levels = c("never", "former smoker > 12 mos", "current in past 12 mos"))
+tdata$Aspirin = factor(tdata$Aspirin, levels = c(0,1))
+tdata$metformin = factor(tdata$metformin, levels = c(0,1))
+tdata$statin = factor(tdata$statin, levels = c(0,1))
+tdata$Insulin = factor(tdata$Insulin, levels = c(0,1))
+
+tdata$Larynx = factor(tdata$Larynx, levels = c(0,1))
+tdata$Oropharynx = factor(tdata$Oropharynx, levels = c(0,1))
+tdata$`Oral Cavity` = factor(tdata$`Oral Cavity`, levels = c(0,1))
+tdata$Other = factor(tdata$Other, levels = c(0,1))
+tdata$stage = factor(tdata$stage, levels = c(0,1,2,3,4))
+```
+
+## 1. Median follow-up time
+```{r, echo = FALSE, warning = FALSE, message=FALSE}
+# median follow up time
+quantile(prodlim(Hist(stime, deathstatus) ~ 1, data = tdata,reverse=TRUE))
+```
+
+
+## 2. Missing data
+
+### 2.1 Check missingness
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+# check
+aggr_plot = aggr(tdata, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(tdata), cex.axis=0.7, gap=3, ylab=c("Histogram of missing data","Pattern"))
+
+print(aggr_plot)
+```
+
+### 2.2 Missing data imputation with Random Forest (set trees = 200)
+1. NRMSE (normalized mean squared error): represent error derived from imputing continuous values.     
+2. PFC (proportion of falsely classified):  represent error derived from imputing categorical values.  
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+# impute all data with RF, exclude ID, death and recurrence status
+if (file.exists("data_imp_model.rds")){
+  data.imp = readRDS("data_imp_model.rds") # load model
+} else{
+  data.imp = missForest(tdata %>% select(-c(idnum, deathstatus, recurstatus, stime, rtime)), 
+                      ntree = 200)
+  saveRDS(data.imp, "data_imp_model.rds") # save model
+}
+
+# imputation error
+err = data.frame(model = "ntree=200", 
+                 NRMSE = format(as.numeric(data.imp$OOBerror[1]), digits = 4), 
+                 PFC = format(as.numeric(data.imp$OOBerror[2]), digits = 4))
+kable(err, caption = "Imputation error using Random Forest ntree = 200")
+
+# extract imputed data
+new.imp = data.imp$ximp
+
+# merge imputate data with ID, death and recurrence status
+new.data = cbind(new.imp, tdata[,c("idnum", "deathstatus", "recurstatus", "stime", "rtime")])
+```
+
+
+## 3. Overall Survival
+
+```{r os, fig.height = 6, out.width = c('50%', '50%'), echo=FALSE,  warning = FALSE, message=FALSE}
+# all
+os_fit = survfit(Surv(stime, deathstatus) ~ 1, data = new.data)
+ggsurvplot(os_fit, data = new.data, surv.median.line = "hv", conf.int = TRUE, break.time.by = 20, risk.table = TRUE) + ggtitle("Overall Survival")
+
+# by tumor site
+os_fit_site = survfit(Surv(stime, deathstatus) ~ site, data = new.data)
+ggsurvplot(os_fit_site, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE, break.time.by = 20, risk.table = TRUE, legend.title = "Tumor Site", legend = "top", legend.labs = c("Larynx", "Oral Cavity", "Orapharynx", "Other"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Overall Survival by Tumor Site")
+
+# by aspirin use
+os_fit_asp = survfit(Surv(stime, deathstatus) ~ Aspirin, data = new.data)
+ggsurvplot(os_fit_asp, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Aspirin", legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Overall Survival by Aspirin Use")
+
+# by metformin use
+os_fit_met = survfit(Surv(stime, deathstatus) ~ metformin, data = new.data)
+ggsurvplot(os_fit_met, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, legend.title = "Metformin", risk.table = TRUE, legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Overall Survival by Metformin Use")
+
+# by statin use
+os_fit_sta = survfit(Surv(stime, deathstatus) ~ statin, data = new.data)
+ggsurvplot(os_fit_sta, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Statin", legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Overall Survival by Statin Use")
+
+# by insulin use
+os_fit_ins = survfit(Surv(stime, deathstatus) ~ Insulin, data = new.data)
+ggsurvplot(os_fit_ins, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Insulin", legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Overall Survival by Insulin Use")
+
+# +++++++++++++ BELOW NOT COVARIATE OF INTEREST +++++++++++ #
+# by gender
+# os_fit_sex = survfit(Surv(stime, deathstatus) ~ gender, data = new.data)
+# ggsurvplot(os_fit_sex, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Gender", legend = "top", legend.labs = c("Female", "Male"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+#   ggtitle("Overall Survival by Gender")
+
+# by age group
+# os_fit_age = survfit(Surv(stime, deathstatus) ~ Age_group, data = new.data)
+# ggsurvplot(os_fit_age, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Age group", legend = "top", legend.labs = c("Age <= 52", "52 < Age <= 59", "59 < Age <= 68", "Age > 68"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+#   ggtitle("Overall Survival by Age group")
+
+# by drink
+# os_fit_drink = survfit(Surv(stime, deathstatus) ~ drinker, data = new.data)
+# ggsurvplot(os_fit_drink, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Drinking status", legend = "top",  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+#   ggtitle("Overall Survival by Drinking status")
+```
+
+## 4. Progression-Free Survival
+```{r pfs, fig.height = 6, out.width = c('50%', '50%'), echo=FALSE,  warning = FALSE, message=FALSE}
+# all
+pfs_fit = survfit(Surv(rtime, recurstatus) ~ 1, data = new.data)
+ggsurvplot(pfs_fit, data = new.data, surv.median.line = "hv", conf.int = TRUE,break.time.by = 20, risk.table = TRUE) + ggtitle("Progression-Free Survival")
+
+
+# by tumor site
+pfs_fit_site = survfit(Surv(rtime, recurstatus) ~ site, data = new.data)
+ggsurvplot(pfs_fit_site, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Tumor Site", legend = "top", legend.labs = c("Larynx", "Oral Cavity", "Orapharynx", "Other"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Progression-Free Survival by Tumor Site")
+
+
+# by aspirin use
+pfs_fit_asp = survfit(Surv(rtime, recurstatus) ~ Aspirin, data = new.data)
+ggsurvplot(pfs_fit_asp, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Aspirin", legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Progression-Free Survival by Aspirin Use")
+
+# by metformin use
+pfs_fit_met = survfit(Surv(rtime, recurstatus) ~ metformin, data = new.data)
+ggsurvplot(os_fit_met, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Metformin", legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Progression-Free Survival by Metformin Use")
+
+# by statin use
+pfs_fit_sta = survfit(Surv(rtime, recurstatus) ~ statin, data = new.data)
+ggsurvplot(os_fit_sta, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE, break.time.by = 20, risk.table = TRUE, legend.title = "Statin", legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Progression-Free Survival by Statin Use") 
+
+# by insulin use
+pfs_fit_ins = survfit(Surv(rtime, recurstatus) ~ Insulin, data = new.data)
+ggsurvplot(os_fit_ins, data = new.data, surv.median.line = "hv", pval = TRUE, pval.method = TRUE, conf.int = TRUE,break.time.by = 20, risk.table = TRUE, legend.title = "Insulin", legend = "top", legend.labs = c("No", "Yes"),  font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11) +
+  ggtitle("Progression-Free Survival by Insulin Use")
+```
+
+
+## 5. Multivariate Cox Model
+* Note: Schoenfeld’s global test was assessed to test proportional hazard assumption in the Cox model, if the global proportional hazard assumption was violated (p < 0.05), risk factors that violated the proportional hazard assumption will be stratified in the model instead of including in the model as confounders.
+* Outcome: overall survival
+
+### 5.1. Time-independent *unadjusted* model: only covariate of interest included
+* Covariate of interest: tumor sites (larynx, oropharynx, oral cavity), aspirin use, metformin use, statin use, insulin use
+```{r cox, echo=FALSE,  warning = FALSE, message=FALSE}
+cox_unadj = coxph(Surv(stime, deathstatus) ~ Aspirin + metformin + statin + Insulin + Larynx + Oropharynx + `Oral Cavity`, data = new.data)
+summary(cox_unadj)
+#extractAIC(cox_unadj)
+ggforest(cox_unadj)
+
+```
+
+* AIC for the unadjusted model is `r extractAIC(cox_unadj)[2]`.
+
+#### 5.1.1 Test for the proportional-hazards (PH) assumption
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+cox.zph(cox_unadj)
+```
+
+
+### 5.2. Time-independent *adjusted* model: adjusting for confounder
+* Covariate of interest: tumor sites (larynx, oropharynx, oral cavity), aspirin use, metformin use, statin use, insulin use
+* Confounder: recurrence status, stage, smoker, drinker, age group, gender
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+cox_adj = coxph(Surv(stime, deathstatus) ~  Aspirin + metformin + statin + Insulin + Larynx + Oropharynx + `Oral Cavity`+  factor(stage) + factor(smoker) + factor(drinker) + Age_group + gender, data = tdata)
+summary(cox_adj)
+# extractAIC(cox_adj)
+```
+* AIC for the adjusted model is `r extractAIC(cox_adj)[2]`.
+
+#### 5.2.1 Test for the proportional-hazards (PH) assumption
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+cox.zph(cox_adj)
+```
+
+
+\blandscape  
+\section{5.2.2 Graphical diagnostic: scaled Schoenfeld residuals against the transformed time}   
+
+```{r, fig.height=7, fig.width=12, ,echo=FALSE,  warning = FALSE, message=FALSE}
+ggcoxzph(cox.zph(cox_adj), font.main = 13, font.tickslab = 10, font.x =  11, font.y = 11)
+```
+
+\elandscape  
+
+### 5.3 Time-independent adjusted model with interaction
+* Covariate of interest: tumor sites (larynx, oropharynx, oral cavity), aspirin use, metformin use, statin use, insulin use
+* Confounder: recurrence status, stage, smoker, drinker, age group, gender
+* Interaction: Aspirin * metformin,  Aspirin * statin,  Aspirin * Insulin,  metformin * statin,  metformin * Insulin, statin * Insulin   
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+cox_adj_int = coxph(Surv(stime, deathstatus) ~ Aspirin*metformin + Aspirin*statin + Aspirin*Insulin + metformin*statin + metformin*Insulin + statin*Insulin + stage + smoker + drinker + Age_group + gender + Larynx + Oropharynx + `Oral Cavity`, data = new.data)
+
+summary(cox_adj_int)
+#extractAIC(cox_adj_int)
+```
+* AIC for adjusted model with interaction is `r extractAIC(cox_adj_int)[2]`. 
+
+#### 5.3.1 Test for the proportional-hazards (PH) assumption
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+cox.zph(cox_adj_int)
+```
+
+
+
+```{r time_varying, eval = F, echo=FALSE,  warning = FALSE, message=FALSE}
+# time varying model: set recurrence time as time-varying parameter
+tdata_long = tmerge(data1 = tdata %>% select(-rtime, -recurstatus), data2 = tdata, id = idnum, death = event(stime, deathstatus), recur = event(rtime, recurstatus))
+attr(tdata_long, "tcount")
+```
+
+
+```{r, eval = F, echo=FALSE,  warning = FALSE, message=FALSE}
+time_dep_cox = coxph(Surv(tstart, tstop, death) ~ recur + Aspirin + metformin + statin + Insulin + strata(site) + strata(`Age group`) + stage + smoker + drinker + strata(gender), data = tdata_long, ties = "breslow")
+summary(time_dep_cox)
+extractAIC(time_dep_cox)
+```
+
+
+```{r, eval = F, echo=FALSE,  warning = FALSE, message=FALSE}
+time_dep_cox
+```
+
+
+## 6.Competing risk
+```{r, echo=FALSE,  warning = FALSE, message=FALSE}
+tsub = new.data[new.data$deathstatus == 1,]
+
+
+tsub['cause'] = ifelse(tsub$cod == "Dead due to Malignancy", "Malignancy",
+                       ifelse(tsub$cod == "Dead, cause unknown", "Unknown",
+                              ifelse(tsub$cod == "Dead, other cause", "Other", NA)))
+
+cr = cuminc(ftime = tsub$stime, fstatus = tsub$cause)
+
+# Visualize
+ggcompetingrisks(cr, palette = "Dark2",
+                 legend = "top",
+                 ggtheme = theme_bw())
+```
+
