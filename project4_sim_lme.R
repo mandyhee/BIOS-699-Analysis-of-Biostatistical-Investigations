@@ -64,8 +64,8 @@ system.time({
     r = r_seq[ri]
     print(r)
     
-    # define coefficients for linear regression -----------
-    # these coefficients will be used to generate mean_deflection using rnorm
+    # define coefficients for multiple linear regression -----------
+    # these coefficients will be used to generate mean_deflection using rnorm()
     beta0 = 1.34
     beta1 = -1.34*r
     beta2 = 9.26
@@ -88,21 +88,21 @@ system.time({
       for (i in 1:sims){
         
         # balanced amount of new and standard needle
-        num_patient = 1
-        cum_new_needle = 0
-        cum_std_needle = 0
+        num_patient = 1 # total number of patients
+        cum_new_needle = 0 # cumulative number of new needles
+        cum_std_needle = 0 # cumulative number of standard needles
         tracking = 0 # track new needles
         tdata = NULL
-        while (tracking <= N){
+        while (tracking <= N){ # restrict number of new needles be smaller than upper limit (N)
           
-          num_of_lesion = sample(c(1,2,3),1)
+          num_of_lesion = sample(c(1,2,3),1) # randomize lesion
           num_of_target = num_of_lesion*4
           num_of_random = 12
           total_needle_per_patient = num_of_target + num_of_random
           tracking = tracking + total_needle_per_patient/2
           # cum_std_needle = cum_std_needle + total_needle_per_patient/2
           
-          if(tracking > N){
+          if(tracking > N){ # if number of new needles exceed upper limit (N), break loop
             break
           }
        
@@ -115,6 +115,7 @@ system.time({
             cum_std_needle = cum_std_needle + 1
             needle_type = 0
             tissue_type = 1
+            # generate standard needle target data and bind to tdata
             tdata = bind_rows(tdata, 
                               bind_cols(
                                 num_patient=num_patient, 
@@ -141,6 +142,7 @@ system.time({
             cum_new_needle = cum_new_needle + 1
             needle_type = 1
             tissue_type = 1
+            # generate new needle target data and bind to tdata
             tdata = bind_rows(tdata, 
                               bind_cols(
                                 num_patient=num_patient, 
@@ -167,6 +169,7 @@ system.time({
             cum_std_needle = cum_std_needle + 1
             needle_type = 0
             tissue_type = 0
+            # generate standard needle random data and bind to tdata
             tdata = bind_rows(tdata, 
                               bind_cols(
                                 num_patient=num_patient, 
@@ -193,7 +196,7 @@ system.time({
             cum_new_needle = cum_new_needle + 1
             needle_type = 1
             tissue_type = 0
-            
+            # generate new needle random data and bind to tdata
             tdata = bind_rows(tdata, 
                               bind_cols(
                                 num_patient=num_patient, 

@@ -83,22 +83,24 @@ system.time({
       for (i in 1:sims){
         # create data for each simulation ------------- 
         # balanced amount of new and standard needle
-        num_patient = 1
-        cum_new_needle = 0
-        cum_std_needle = 0
+        num_patient = 1 # total number of patients
+        cum_new_needle = 0 # cumulative number of new needles
+        cum_std_needle = 0 # cumulative number of standard needles
         tdata = NULL
-        while (cum_new_needle <= N){
+        while (cum_new_needle <= N){ # restrict number of new needles be smaller than upper limit (N)
           
-          num_of_lesion = sample(c(1,2,3),1)
+          num_of_lesion = sample(c(1,2,3),1) # randomized lesion
           num_of_target = num_of_lesion*4
           num_of_random = 12
           total_needle_per_patient = num_of_target + num_of_random
-          cum_new_needle = cum_new_needle + total_needle_per_patient/2
-          cum_std_needle = cum_std_needle + total_needle_per_patient/2
+          cum_new_needle = cum_new_needle + total_needle_per_patient/2 # cumulative number of new needles
+          cum_std_needle = cum_std_needle + total_needle_per_patient/2 # cumulative number of standard needles
           
-          if(cum_new_needle > N){
+          if(cum_new_needle > N){ # if number of new needles exceed upper limit (N), break loop
             break
           }
+          
+          # store results to the data -----------------
           tdata = bind_rows(tdata, 
                             bind_cols(
                               num_patient=num_patient, 
@@ -111,7 +113,7 @@ system.time({
                             ))
           
           
-          num_patient = num_patient + 1
+          num_patient = num_patient + 1 # total number of patients
           
         }
         
