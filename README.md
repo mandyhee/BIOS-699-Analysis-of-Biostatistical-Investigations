@@ -48,8 +48,11 @@ Prostate cancer is the second most frequent malignancy in men worldwide as well 
 
 In this study, our primary objective is to simulate a randomized clinical trial to show that by using 500 new needles, there is an 80% power with 5% Type 1 error to detect at least 40% deflection reduction, comparing to standard needles. Moreover, we are also interested in knowing the level of deflection reduction if the number of new needles increase to 600, under 80% power and 5% Type 1 error.
 
-### II. Simulation Design
-Two types of simulations were designed to test the power of needle effects on mean deflection reduction:  
-(1) Test mean of reduction in deflections between standard and new needle using one sample t test with p = 0.05 level.   
-(2) Fit multivariate linear regression with GEE, conduct Wald test to test needle effect on reduction in mean deflection between standard and new needles with p = 0.05 level.   
+### II. Simulation Design 
+* Prespecify distribution of standard needles:  
+1. Random tissue ~ N (1.34, 1.22).   
+2. Targeted tissue ~ N (10.6, 1.52).  
+* Two types of simulations were designed to test the power of needle effects on mean deflection reduction:  
+1. Test mean of reduction in deflections between standard and new needle using one sample t test with p = 0.05 level.   
+2. Fit multivariate linear regression with GEE, conduct Wald test to test needle effect on reduction in mean deflection between standard and new needles with p = 0.05 level.   
 
