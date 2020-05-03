@@ -55,4 +55,7 @@ In this study, our primary objective is to simulate a randomized clinical trial 
 * Two types of simulations were designed to test the power of needle effects on mean deflection reduction:  
 1. Test mean of reduction in deflections between standard and new needle using one sample t test with p = 0.05 level.   
 2. Fit multivariate linear regression with GEE, conduct Wald test to test needle effect on reduction in mean deflection between standard and new needles with p = 0.05 level.   
-
+* Number of new needles were tested from 50 to 600. (50, 100, 200, 300, 400, 500, 600)
+* Reduction rate were tested from 0.4 to 0.7, incremented by 0.05.
+* Each trial was simulated 10,000 times.
+* Parallel programming were used to fasten simulation process.
