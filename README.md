@@ -15,6 +15,7 @@ Parametric (two sample t-test) and non-parametric test (Wilcoxon test) were used
 
 To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.
 
+All analyses were conducted with R 3.6.1, package used: `nlme`.
 
 ## Project 2: The potential impact of menthol on transitions from cigarettes to e-cigarettes: PATH Study
 ### I. Project Description
@@ -42,6 +43,9 @@ Missing data were imputed using Random Forest Imputation. Overall survival and p
 
 Multivariate Cox Hazard models were built to evaluate the association between comorbidity drugs and tumor sites with HNSCC patient’s survival time. Additionally, Schoenfeld’s global test was assessed to test proportional hazard assumption in the Cox model, if the global proportional hazard assumption was violated (p < 0.05), risk factors that violated the proportional hazard assumption will be stratified in the model instead of including in the model as confounders.  
 
+All analyses were done in R 3.6.1 and SAS 9.4. Package / procedure used: R (`survival`, `survminer`, `missForest`), SAS (`PROC LIFETEST`, `PROC PHREG`).
+
+
 ## Project 4: Power Analysis for Needle Biopsy Deflection in Prostate Cancer Patients
 ### I. Project Description 
 Prostate cancer is the second most frequent malignancy in men worldwide as well as the second leading cause of death by cancer in men (after lung cancer). Currently, only needle biopsies are the standard of care to confirm prostate cancer’s presence. A new needle tip for prostate cancer biopsy has been developed to reduce the deflection comparing to standard needle tip.  
@@ -59,3 +63,5 @@ In this study, our primary objective is to simulate a randomized clinical trial 
 * Reduction rate were tested from 0.4 to 0.7, incremented by 0.05.
 * Each trial was simulated 10,000 times.
 * Parallel programming were used to fasten simulation process.
+
+All analyses were done in R 3.6.1, package used: `geeback`, `doParallel`.
