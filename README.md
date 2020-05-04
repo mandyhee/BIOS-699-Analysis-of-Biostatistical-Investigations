@@ -13,7 +13,7 @@ CGM data collected from 25 (out of 45) subjects in a single-centered, randomized
 ### III. Statistical Analysis
 Parametric (two sample t-test) and non-parametric test (Wilcoxon test) were used to conduct univariate association of drug effect and the indices.  
 
-To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.
+To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.   
 
 All analyses were conducted with R 3.6.1, package used: `lme4`, `afex`, `lubridate`, `tidyverse`, `knitr`, `kableExtra`.
 
@@ -24,10 +24,12 @@ Prevalence of smoking cigarette has decrease throughout the years; however, ment
 In this study, impact of menthol flavoring cigarettes on transition of cigarette to e-cigarette were being assessed, as well as other demographic factors that might impact the transition.
 
 ### II. Study Design
-Data were collected from the PATH (Population Assessment of Tobacco and Health) study. There were total around 49,000 people age 12 years and older participated in this study, the study spanned from wave 1 (2013) to wave 4 (2017), information regarding to tobacco usage, age, gender, education, income, health conditions were also collected for each individual in each wave.
+Data were collected from the PATH (Population Assessment of Tobacco and Health) study. There were total around 49,000 people age 12 years and older participated in this study, the study spanned from wave 1 (2013) to wave 4 (2017), information regarding to tobacco usage, age, gender, education, income, health conditions were also collected for each individual in each wave. Sampling weight for each wave (*single-wave longitudinal weight*, *all-waves longitudinal weight*) were addressed for each participant to ensure the representativeness of population average.
 
 ### III. Statistical Analysis
-To focus on cigarette to e-cigarette transitions, trajectory analysis and logistic regression were conducted targeting the participants who started as cigarette but non-e-cigarette users at wave 1, developments of their e-cigarette usage through wave 2 to wave 4 were assessed. ROC analysis was also assessed to check logistic regression model performance.
+To focus on cigarette to e-cigarette transitions, trajectory analysis and logistic regression were conducted targeting the participants who started as cigarette but non-e-cigarette users at wave 1, developments of their e-cigarette usage through wave 2 to wave 4 were assessed. ROC analysis was also assessed to check logistic regression model performance.   
+
+All analyses were done in SAS 9.4, procedure used: `PROC SQL`, `PROC SURVEYFREQ`, `PROC SURVEYLOGISTIC`.
 
 ## Project 3: Investigation of common chronic medication use and tumor sites in head and neck squamous cell carcinoma (HNSCC)
 ### I. Project Description
@@ -62,6 +64,6 @@ In this study, our primary objective is to simulate a randomized clinical trial 
 * Number of new needles were tested from 50 to 600. (50, 100, 200, 300, 400, 500, 600)
 * Reduction rate were tested from 0.4 to 0.7, incremented by 0.05.
 * Each trial was simulated 10,000 times.
-* Parallel programming were used to fasten simulation process.
+* Parallel programming were used to fasten simulation process.   
 
 All analyses were done in R 3.6.1, package used: `geeback`, `doParallel`, `tidyverse`.
