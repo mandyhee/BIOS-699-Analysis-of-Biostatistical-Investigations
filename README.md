@@ -15,7 +15,7 @@ Parametric (two sample t-test) and non-parametric test (Wilcoxon test) were used
 
 To take account for repeated measures, linear mixed model were conducted to determine the association of drug and glucose variability indices, allowing subjects to have their own trajectories. Carry-over effects and baseline parameters (Age, HbA1c, SBP, DBP) were also adjusted in the model. Wald test p-values were used to access the significance of drug effect and to check if carry-over effect exist in the model. Akaike’s Information Criterion (AIC) was used for selecting the preference of random intercept or random intercept/slope model, with the lower the better.   
 
-All analyses were conducted with R 3.6.1, package used: `lme4`, `afex`, `lubridate`, `tidyverse`, `knitr`, `kableExtra`.
+All analyses were conducted with R 3.6.1, package used: `nlme`, `afex`, `lubridate`, `tidyverse`, `knitr`, `kableExtra`.
 
 ## Project 2: The potential impact of menthol on transitions from cigarettes to e-cigarettes: PATH Study
 ### I. Project Description
